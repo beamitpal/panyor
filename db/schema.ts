@@ -268,11 +268,8 @@ export const rooms = pgTable("rooms", {
 export const studentProfiles = pgTable("student_profiles", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
-  // Roll / enrollment may be "A/F" (applied for, not yet issued) for many
-  // students at once, so uniqueness is enforced in application code
-  // (excluding the A/F sentinel) rather than by the database.
-  studentId: text("student_id").notNull(),
-  enrollmentNo: text("enrollment_no").notNull(),
+  studentId: text("student_id").notNull().unique(), // e.g. RGU/2024/CSE/042
+  enrollmentNo: text("enrollment_no").notNull().unique(),
   department: text("department").notNull(),
   program: text("program").notNull(), // e.g. B.Tech, M.Tech, M.Sc, Ph.D
   year: integer("year").notNull().default(1),

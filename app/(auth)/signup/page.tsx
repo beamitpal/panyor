@@ -321,15 +321,13 @@ export default function SignupPage() {
               <FieldGroup className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field>
                   <FieldLabel htmlFor="studentId">University roll / ID</FieldLabel>
-                  <Input id="studentId" placeholder="RGU/2024/CSE/042 or A/F" {...register("studentId")} aria-invalid={!!errors.studentId} />
+                  <Input id="studentId" placeholder="RGU/2024/CSE/042" {...register("studentId")} aria-invalid={!!errors.studentId} />
                   <FieldError>{errors.studentId?.message}</FieldError>
-                  <FieldDescription>Enter A/F if not issued yet.</FieldDescription>
                 </Field>
                 <Field>
                   <FieldLabel htmlFor="enrollmentNo">Enrollment number</FieldLabel>
-                  <Input id="enrollmentNo" placeholder="RGU-2024-… or A/F" {...register("enrollmentNo")} aria-invalid={!!errors.enrollmentNo} />
+                  <Input id="enrollmentNo" placeholder="RGU-2024-…" {...register("enrollmentNo")} aria-invalid={!!errors.enrollmentNo} />
                   <FieldError>{errors.enrollmentNo?.message}</FieldError>
-                  <FieldDescription>Enter A/F if not issued yet.</FieldDescription>
                 </Field>
                 <Field className="sm:col-span-2">
                   <FieldLabel>Department</FieldLabel>
