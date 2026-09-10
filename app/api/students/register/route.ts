@@ -20,6 +20,16 @@ const schema = z.object({
   avatarUrl: z.string().url().optional(),
 })
 
+function postgresErrorDetails(error: unknown) {
+  const value = error as { code?: string; constraint?: string; detail?: string; message?: string }
+  return {
+    code: value?.code,
+    constraint: value?.constraint,
+    detail: value?.detail,
+    message: value?.message,
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const session = await auth.api.getSession({ headers: await headers() })
@@ -27,28 +37,55 @@ export async function POST(request: Request) {
 
     const body = schema.parse(await request.json())
     const db = getDb()
-    const existing = await db.select({ id: studentProfiles.id }).from(studentProfiles).where(eq(studentProfiles.userId, session.user.id)).limit(1)
-    // Idempotent: a retry (or an orphaned account whose profile write failed)
-    // lands here with a profile already present — treat as success so the
-    // user reaches /pending instead of a dead-end 409.
-    if (existing[0]) return NextResponse.json({ success: true, profileId: existing[0].id, existing: true })
+
+    // A profile is uniquely owned by the authenticated user. This also makes
+    // the endpoint safe to retry after a network timeout.
+    const existing = await db
+      .select({ id: studentProfiles.id })
+      .from(studentProfiles)
+      .where(eq(studentProfiles.userId, session.user.id))
+      .limit(1)
+    if (existing[0]) {
+      return NextResponse.json({ success: true, profileId: existing[0].id, existing: true })
+    }
+
+    // Give the user a useful validation error instead of exposing a raw
+    // PostgreSQL unique-constraint exception when the academic identifiers
+    // have already been registered.
+    const duplicateStudentId = await db
+      .select({ id: studentProfiles.id })
+      .from(studentProfiles)
+      .where(eq(studentProfiles.studentId, body.studentId.trim()))
+      .limit(1)
+    if (duplicateStudentId[0]) {
+      return NextResponse.json({ error: "This roll / student ID is already registered." }, { status: 409 })
+    }
+
+    const duplicateEnrollment = await db
+      .select({ id: studentProfiles.id })
+      .from(studentProfiles)
+      .where(eq(studentProfiles.enrollmentNo, body.enrollmentNo.trim()))
+      .limit(1)
+    if (duplicateEnrollment[0]) {
+      return NextResponse.json({ error: "This enrollment number is already registered." }, { status: 409 })
+    }
 
     const profileId = crypto.randomUUID()
     const now = new Date()
     await db.insert(studentProfiles).values({
       id: profileId,
       userId: session.user.id,
-      studentId: body.studentId,
-      enrollmentNo: body.enrollmentNo,
-      department: body.department,
-      program: body.program,
+      studentId: body.studentId.trim(),
+      enrollmentNo: body.enrollmentNo.trim(),
+      department: body.department.trim(),
+      program: body.program.trim(),
       year: body.year,
       semester: body.semester,
       approvalStatus: "PENDING",
-      emergencyContactName: body.emergencyContactName || null,
-      emergencyContactPhone: body.emergencyContactPhone || null,
-      bloodGroup: body.bloodGroup || null,
-      address: body.address || null,
+      emergencyContactName: body.emergencyContactName?.trim() || null,
+      emergencyContactPhone: body.emergencyContactPhone?.trim() || null,
+      bloodGroup: body.bloodGroup?.trim() || null,
+      address: body.address?.trim() || null,
       avatarUrl: body.avatarUrl || session.user.image || null,
       createdAt: now,
       updatedAt: now,
@@ -56,8 +93,27 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, profileId })
   } catch (error) {
-    if (error instanceof z.ZodError) return NextResponse.json({ error: "Invalid registration data.", details: error.flatten() }, { status: 400 })
-    console.error("Student registration failed", error)
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: "Invalid registration data.", details: error.flatten() }, { status: 400 })
+    }
+
+    const pg = postgresErrorDetails(error)
+    console.error("Student registration failed", { ...pg, error })
+
+    // Handle a race between the duplicate checks and the insert. PostgreSQL
+    // uses 23505 for unique-constraint violations.
+    if (pg.code === "23505") {
+      if (pg.constraint?.includes("student_profiles_student_id")) {
+        return NextResponse.json({ error: "This roll / student ID is already registered." }, { status: 409 })
+      }
+      if (pg.constraint?.includes("student_profiles_enrollment_no")) {
+        return NextResponse.json({ error: "This enrollment number is already registered." }, { status: 409 })
+      }
+      if (pg.constraint?.includes("student_profiles_user_id")) {
+        return NextResponse.json({ error: "A student profile already exists for this account." }, { status: 409 })
+      }
+    }
+
     return NextResponse.json({ error: "Unable to create student profile." }, { status: 500 })
   }
 }

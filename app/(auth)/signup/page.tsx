@@ -133,6 +133,9 @@ export default function SignupPage() {
     if (error) {
       const msg = (error.message || "").toLowerCase()
       if (msg.includes("exist") || msg.includes("already") || msg.includes("taken")) {
+        // A previous attempt may have created the Better Auth user but failed
+        // before the student profile was written. Re-authenticate so the
+        // profile endpoint can safely repair that partial registration.
         const retry = await authClient.signIn.email({ email: values.email, password: values.password })
         if (retry.error) {
           setError("root", { message: "This email is already registered. Please sign in instead." })
@@ -141,6 +144,32 @@ export default function SignupPage() {
         freshSignup = false
       } else {
         setError("root", { message: error.message || "Registration failed. Try a different email." })
+        return
+      }
+    }
+
+    // Better Auth normally auto-signs the new account in. Explicitly verify
+    // the browser has a session before calling our profile API; this avoids a
+    // race where the user row exists but the session cookie has not reached
+    // the browser yet. If needed, sign in once using the credentials just
+    // entered.
+    const sessionCheck = await authClient.getSession()
+    if (sessionCheck.error || !sessionCheck.data?.user) {
+      const sessionLogin = await authClient.signIn.email({
+        email: values.email,
+        password: values.password,
+      })
+      if (sessionLogin.error) {
+        if (freshSignup) {
+          try {
+            await fetch("/api/students/register", { method: "DELETE" })
+          } catch {
+            // Best effort cleanup. The original auth error is more useful here.
+          }
+        }
+        setError("root", {
+          message: sessionLogin.error.message || "Your account was created, but the login session could not be established. Please try again.",
+        })
         return
       }
     }
