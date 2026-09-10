@@ -70,7 +70,7 @@ export default async function LandingPage() {
       {/* Top bar */}
       <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-md">
         <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4 sm:px-6">
-          <BrandMark />
+          <BrandMark compactOnMobile />
           <div className="flex items-center gap-2">
             <Link href="/login">
               <Button variant="ghost" size="sm">Sign in</Button>

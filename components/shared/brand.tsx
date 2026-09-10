@@ -15,12 +15,15 @@ export function BrandMark({
   boxClassName,
   className,
   onPrimary = false,
+  compactOnMobile = false,
 }: {
   withName?: boolean
   boxClassName?: string
   className?: string
   /** Use on primary-colored backgrounds (white text). */
   onPrimary?: boolean
+  /** Icon-only on phones, full wordmark from sm up. */
+  compactOnMobile?: boolean
 }) {
   return (
     <span className={cn("flex items-center gap-2.5", className)}>
@@ -33,7 +36,7 @@ export function BrandMark({
         priority
       />
       {withName && (
-        <span className="flex min-w-0 flex-col">
+        <span className={cn("min-w-0 flex-col", compactOnMobile ? "hidden sm:flex" : "flex")}>
           <span
             className={cn(
               "truncate text-xs font-bold leading-tight sm:text-sm",
