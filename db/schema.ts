@@ -268,8 +268,8 @@ export const rooms = pgTable("rooms", {
 export const studentProfiles = pgTable("student_profiles", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
-  studentId: text("student_id").notNull().unique(), // e.g. RGU/2024/CSE/042
-  enrollmentNo: text("enrollment_no").notNull().unique(),
+  studentId: text("student_id").notNull(),
+  enrollmentNo: text("enrollment_no").notNull(),
   department: text("department").notNull(),
   program: text("program").notNull(), // e.g. B.Tech, M.Tech, M.Sc, Ph.D
   year: integer("year").notNull().default(1),
