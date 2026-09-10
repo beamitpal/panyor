@@ -4,6 +4,41 @@ import * as schema from "./db/schema"
 import { getDb } from "./db/server"
 
 /**
+ * Origins allowed to call the auth endpoints. Covers local dev, explicit
+ * extras (TRUSTED_ORIGINS), the configured site/auth URLs, and Vercel
+ * preview deployments (*.vercel.app) so branch previews can sign in too.
+ * Deduplicated; invalid URL strings are ignored.
+ */
+function buildTrustedOrigins(): string[] {
+  const origins = new Set<string>([
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://*.vercel.app",
+  ])
+  const fromEnv = (v: string | undefined) => {
+    if (!v) return
+    for (const part of v.split(",")) {
+      const o = part.trim()
+      if (!o) continue
+      if (o.includes("*")) {
+        origins.add(o)
+        continue
+      }
+      try {
+        origins.add(new URL(o).origin)
+      } catch {
+        // Ignore malformed entries rather than crashing boot.
+      }
+    }
+  }
+  fromEnv(process.env.TRUSTED_ORIGINS)
+  fromEnv(process.env.BETTER_AUTH_URL)
+  fromEnv(process.env.NEXT_PUBLIC_SITE_URL)
+  if (process.env.VERCEL_URL) origins.add(`https://${process.env.VERCEL_URL}`)
+  return [...origins]
+}
+
+/**
  * Better Auth server instance — the single source of authentication truth.
  *
  * - PostgreSQL via Drizzle (`provider: "pg"`, plural table names).
@@ -69,11 +104,7 @@ export const auth = betterAuth({
     max: 20, // 20 auth attempts per minute per IP
   },
 
-  trustedOrigins: [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    ...(process.env.TRUSTED_ORIGINS?.split(",").map((o) => o.trim()).filter(Boolean) ?? []),
-  ],
+  trustedOrigins: buildTrustedOrigins(),
 
 })
 

@@ -126,9 +126,23 @@ export default function SignupPage() {
       phone: values.phone,
       image: avatarUrl,
     })
+    // Self-heal an interrupted earlier attempt: if the mailbox already
+    // exists (auth row survived a failed profile write), sign in with the
+    // same credentials and finish the profile below instead of dead-ending.
+    let freshSignup = !error
     if (error) {
-      setError("root", { message: error.message || "Registration failed. Try a different email." })
-      return
+      const msg = (error.message || "").toLowerCase()
+      if (msg.includes("exist") || msg.includes("already") || msg.includes("taken")) {
+        const retry = await authClient.signIn.email({ email: values.email, password: values.password })
+        if (retry.error) {
+          setError("root", { message: "This email is already registered. Please sign in instead." })
+          return
+        }
+        freshSignup = false
+      } else {
+        setError("root", { message: error.message || "Registration failed. Try a different email." })
+        return
+      }
     }
 
     try {
@@ -148,6 +162,16 @@ export default function SignupPage() {
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || "Student profile registration failed.")
     } catch (err) {
+      // Roll back a half-created account so a retry starts clean instead of
+      // hitting "email already exists" with nothing visible in admin.
+      if (freshSignup) {
+        try {
+          await fetch("/api/students/register", { method: "DELETE" })
+          await authClient.signOut()
+        } catch {
+          // Best effort — surface the original failure below.
+        }
+      }
       setError("root", {
         message: err instanceof Error ? err.message : "Account created, but profile registration failed.",
       })

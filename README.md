@@ -63,6 +63,27 @@ optional and never blocks registration if buckets are missing).
 > `drizzle-kit push` is broken in drizzle-kit 0.31.x (introspection crash);
 > always use `generate` + `migrate`.
 
+## Deploying to Vercel
+
+1. Push this repo to GitHub. The app lives in the `panyor/` subdirectory, so
+   in the Vercel project settings set **Root Directory** to `panyor`
+   (framework preset Next.js, build command `pnpm build`).
+2. Add every variable from `.env.example` to the Vercel environment, with
+   production values:
+   - `BETTER_AUTH_URL=https://<your-app>.vercel.app`
+   - `NEXT_PUBLIC_SITE_URL=https://<your-app>.vercel.app`
+   - `DATABASE_URL` = Supabase **pooler** URL (port `6543`, transaction mode)
+   - `TRUSTED_ORIGINS` = your custom domain if any (Vercel previews
+     `*.vercel.app` are trusted automatically)
+3. Apply migrations + seed against the live DB from your machine (with the
+   production `DATABASE_URL` in a local `.env.production`):
+   `pnpm drizzle-kit migrate`, `pnpm db:seed:reference`, `pnpm db:seed`.
+4. Deploy. First login: the super admin from step 3.
+
+Notes: `sharp` is a dependency (icons + image optimization); the service
+worker registers in production only; preview deployments get working auth
+via the `*.vercel.app` trusted-origin wildcard.
+
 ## Roles & permissions
 
 `STUDENT · CARETAKER · MESS_EMPLOYEE · MESS_COMMITTEE · SPORTS_COMMITTEE ·

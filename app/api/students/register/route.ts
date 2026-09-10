@@ -3,7 +3,7 @@ import { headers } from "next/headers"
 import { z } from "zod"
 import { auth } from "@/auth"
 import { getDb } from "@/db/server"
-import { studentProfiles } from "@/db/schema"
+import { studentProfiles, users } from "@/db/schema"
 import { eq } from "drizzle-orm"
 
 const schema = z.object({
@@ -28,7 +28,10 @@ export async function POST(request: Request) {
     const body = schema.parse(await request.json())
     const db = getDb()
     const existing = await db.select({ id: studentProfiles.id }).from(studentProfiles).where(eq(studentProfiles.userId, session.user.id)).limit(1)
-    if (existing[0]) return NextResponse.json({ error: "Student profile already exists." }, { status: 409 })
+    // Idempotent: a retry (or an orphaned account whose profile write failed)
+    // lands here with a profile already present — treat as success so the
+    // user reaches /pending instead of a dead-end 409.
+    if (existing[0]) return NextResponse.json({ success: true, profileId: existing[0].id, existing: true })
 
     const profileId = crypto.randomUUID()
     const now = new Date()
@@ -56,5 +59,23 @@ export async function POST(request: Request) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: "Invalid registration data.", details: error.flatten() }, { status: 400 })
     console.error("Student registration failed", error)
     return NextResponse.json({ error: "Unable to create student profile." }, { status: 500 })
+  }
+}
+
+/**
+ * Self-service rollback: delete the caller's own auth account (cascades to
+ * sessions/accounts/profile). Used when signup succeeds but the profile
+ * write fails, so a retry starts clean instead of hitting "email exists".
+ */
+export async function DELETE() {
+  try {
+    const session = await auth.api.getSession({ headers: await headers() })
+    if (!session?.user) return NextResponse.json({ error: "Authentication required." }, { status: 401 })
+    const db = getDb()
+    await db.delete(users).where(eq(users.id, session.user.id))
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("Student self-rollback failed", error)
+    return NextResponse.json({ error: "Unable to remove partial account." }, { status: 500 })
   }
 }
