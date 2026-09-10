@@ -4,6 +4,7 @@ import { z } from "zod"
 import { auth } from "@/auth"
 import { getDb } from "@/db/server"
 import { studentProfiles, users } from "@/db/schema"
+import { findIdConflict, normalizeStudentId } from "@/lib/students/ids"
 import { eq } from "drizzle-orm"
 
 const schema = z.object({
@@ -49,25 +50,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, profileId: existing[0].id, existing: true })
     }
 
-    // Give the user a useful validation error instead of exposing a raw
-    // PostgreSQL unique-constraint exception when the academic identifiers
-    // have already been registered.
-    const duplicateStudentId = await db
-      .select({ id: studentProfiles.id })
-      .from(studentProfiles)
-      .where(eq(studentProfiles.studentId, body.studentId.trim()))
-      .limit(1)
-    if (duplicateStudentId[0]) {
-      return NextResponse.json({ error: "This roll / student ID is already registered." }, { status: 409 })
+    // A/F (applied for, not yet issued) is never a duplicate — many
+    // applicants share it. Anything else must be unique across profiles.
+    const studentId = normalizeStudentId(body.studentId)
+    const enrollmentNo = normalizeStudentId(body.enrollmentNo)
+    const rollConflict = await findIdConflict(studentId)
+    if (rollConflict) {
+      return NextResponse.json({ error: "This roll / student ID is already registered to another student. Enter A/F if yours is not issued yet." }, { status: 409 })
     }
-
-    const duplicateEnrollment = await db
-      .select({ id: studentProfiles.id })
-      .from(studentProfiles)
-      .where(eq(studentProfiles.enrollmentNo, body.enrollmentNo.trim()))
-      .limit(1)
-    if (duplicateEnrollment[0]) {
-      return NextResponse.json({ error: "This enrollment number is already registered." }, { status: 409 })
+    const enrollConflict = await findIdConflict(enrollmentNo)
+    if (enrollConflict) {
+      return NextResponse.json({ error: "This enrollment number is already registered to another student. Enter A/F if yours is not issued yet." }, { status: 409 })
     }
 
     const profileId = crypto.randomUUID()
@@ -75,8 +68,8 @@ export async function POST(request: Request) {
     await db.insert(studentProfiles).values({
       id: profileId,
       userId: session.user.id,
-      studentId: body.studentId.trim(),
-      enrollmentNo: body.enrollmentNo.trim(),
+      studentId,
+      enrollmentNo,
       department: body.department.trim(),
       program: body.program.trim(),
       year: body.year,
@@ -104,10 +97,10 @@ export async function POST(request: Request) {
     // uses 23505 for unique-constraint violations.
     if (pg.code === "23505") {
       if (pg.constraint?.includes("student_profiles_student_id")) {
-        return NextResponse.json({ error: "This roll / student ID is already registered." }, { status: 409 })
+        return NextResponse.json({ error: "This roll / student ID is already registered. Enter A/F if not issued yet." }, { status: 409 })
       }
       if (pg.constraint?.includes("student_profiles_enrollment_no")) {
-        return NextResponse.json({ error: "This enrollment number is already registered." }, { status: 409 })
+        return NextResponse.json({ error: "This enrollment number is already registered. Enter A/F if not issued yet." }, { status: 409 })
       }
       if (pg.constraint?.includes("student_profiles_user_id")) {
         return NextResponse.json({ error: "A student profile already exists for this account." }, { status: 409 })

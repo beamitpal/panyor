@@ -4,6 +4,7 @@ import { getDb } from "@/db/server"
 import { rooms, studentProfiles, users } from "@/db/schema"
 import { requirePermission } from "@/lib/auth/server"
 import { normalizeEmail, normalizePhone } from "@/lib/auth/normalize"
+import { findIdConflict, normalizeStudentId } from "@/lib/students/ids"
 import { auth } from "@/auth"
 import { eq } from "drizzle-orm"
 
@@ -95,6 +96,16 @@ export async function POST(request: Request) {
     const phone = raw.phone ? normalizePhone(raw.phone) : ""
     if (raw.phone && !phone) return NextResponse.json({ error: "Enter a valid phone number." }, { status: 400 })
     const body = { ...raw, email, phone }
+    const studentId = normalizeStudentId(raw.studentId)
+    const enrollmentNo = normalizeStudentId(raw.enrollmentNo)
+    const rollConflict = await findIdConflict(studentId)
+    if (rollConflict) {
+      return NextResponse.json({ error: "This roll / student ID is already registered to another student. Use A/F if not issued yet." }, { status: 409 })
+    }
+    const enrollConflict = await findIdConflict(enrollmentNo)
+    if (enrollConflict) {
+      return NextResponse.json({ error: "This enrollment number is already registered to another student. Use A/F if not issued yet." }, { status: 409 })
+    }
     const db = getDb()
 
     const duplicate = await db.select({ id: users.id }).from(users).where(eq(users.email, body.email)).limit(1)
@@ -111,8 +122,8 @@ export async function POST(request: Request) {
     await db.insert(studentProfiles).values({
       id: profileId,
       userId: created.user.id,
-      studentId: body.studentId,
-      enrollmentNo: body.enrollmentNo,
+      studentId,
+      enrollmentNo,
       department: body.department,
       program: body.program,
       year: body.year,
