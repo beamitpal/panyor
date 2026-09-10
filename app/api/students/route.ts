@@ -3,6 +3,7 @@ import { z } from "zod"
 import { getDb } from "@/db/server"
 import { rooms, studentProfiles, users } from "@/db/schema"
 import { requirePermission } from "@/lib/auth/server"
+import { normalizeEmail, normalizePhone } from "@/lib/auth/normalize"
 import { auth } from "@/auth"
 import { eq } from "drizzle-orm"
 
@@ -86,7 +87,14 @@ const inviteSchema = z.object({
 export async function POST(request: Request) {
   try {
     await requirePermission("students.create")
-    const body = inviteSchema.parse(await request.json())
+    const raw = inviteSchema.parse(await request.json())
+    // Normalize BEFORE the duplicate check: "Amit@Gmail.Com " and
+    // "amit@gmail.com" are the same mailbox; casing/spacing must never
+    // cause a false "already exists" — or a missed duplicate.
+    const email = normalizeEmail(raw.email)
+    const phone = raw.phone ? normalizePhone(raw.phone) : ""
+    if (raw.phone && !phone) return NextResponse.json({ error: "Enter a valid phone number." }, { status: 400 })
+    const body = { ...raw, email, phone }
     const db = getDb()
 
     const duplicate = await db.select({ id: users.id }).from(users).where(eq(users.email, body.email)).limit(1)

@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge"
 import { BrandMark } from "@/components/shared/brand"
 
 const loginSchema = z.object({
-  email: z.string().email("Enter a valid email address."),
+  email: z.string().trim().min(1, "Enter your email address.").email("Enter a valid email address."),
   password: z.string().min(1, "Password is required."),
 })
 
@@ -49,7 +49,7 @@ function LoginForm() {
 
   const onSubmit = async (values: LoginValues) => {
     const { error } = await authClient.signIn.email({
-      email: values.email,
+      email: values.email.trim().toLowerCase(),
       password: values.password,
     })
     if (error) {

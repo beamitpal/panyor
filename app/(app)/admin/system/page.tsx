@@ -289,7 +289,7 @@ export default function SystemSettingsPage() {
                     e.preventDefault()
                     setCreatingAdmin(true)
                     try {
-                      const response = await fetch("/api/admin/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(adminForm) })
+                      const response = await fetch("/api/admin/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...adminForm, name: adminForm.name.trim(), email: adminForm.email.trim(), phone: adminForm.phone.trim() }) })
                       const result = await response.json()
                       if (!response.ok) throw new Error(result.error || "Unable to create administrator account.")
                       toast.success("Administrator account created successfully.")

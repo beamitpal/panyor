@@ -26,6 +26,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { RGU_DEPARTMENT_NAMES, programsFor } from "@/lib/data/rgu-programs"
+import { normalizeEmail, normalizePhone, PHONE_ERROR } from "@/lib/auth/normalize"
 import { BrandMark } from "@/components/shared/brand"
 import { toast } from "sonner"
 
@@ -33,12 +34,22 @@ const YEARS = [1, 2, 3, 4, 5, 6]
 const SEMESTERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
 const signupSchema = z.object({
-  name: z.string().min(2, "Enter your full name."),
-  email: z.string().email("Enter a valid email address."),
-  phone: z.string().min(6, "Enter a valid phone number."),
+  name: z.string().trim().min(2, "Enter your full name."),
+  email: z
+    .string()
+    .trim()
+    .min(1, "Enter your email address.")
+    .transform((v) => normalizeEmail(v))
+    .pipe(z.string().email("Enter a valid email address.")),
+  phone: z
+    .string()
+    .trim()
+    .min(1, "Enter your phone number.")
+    .transform((v) => normalizePhone(v))
+    .pipe(z.string().min(10, PHONE_ERROR)),
   password: z.string().min(8, "Password must be at least 8 characters."),
-  studentId: z.string().min(3, "Enter your university roll / ID."),
-  enrollmentNo: z.string().min(3, "Enter your enrollment number."),
+  studentId: z.string().trim().min(3, "Enter your university roll / ID."),
+  enrollmentNo: z.string().trim().min(3, "Enter your enrollment number."),
   department: z.string().min(2, "Choose your department."),
   program: z.string().min(2, "Choose your program."),
   year: z.coerce.number().int().min(1).max(8),
@@ -276,6 +287,9 @@ export default function SignupPage() {
                         onValueChange={(v) => {
                           field.onChange(v ?? "")
                           setValue("program", "", { shouldValidate: true })
+                          // Re-validate immediately so a prior error clears
+                          // the moment a choice is made (Select has no blur).
+                          void trigger("department")
                         }}
                       >
                         <SelectTrigger className="h-9 w-full text-xs" aria-invalid={!!errors.department}>
@@ -299,7 +313,7 @@ export default function SignupPage() {
                     control={control}
                     name="program"
                     render={({ field }) => (
-                      <Select value={field.value ?? ""} onValueChange={field.onChange} disabled={departmentPrograms.length === 0}>
+                      <Select value={field.value ?? ""} onValueChange={(v) => { field.onChange(v ?? ""); void trigger("program") }} disabled={departmentPrograms.length === 0}>
                         <SelectTrigger className="h-9 w-full text-xs" aria-invalid={!!errors.program}>
                           <SelectValue placeholder={selectedDepartment ? "Choose program" : "Pick a department first"} />
                         </SelectTrigger>
@@ -322,7 +336,7 @@ export default function SignupPage() {
                       control={control}
                       name="year"
                       render={({ field }) => (
-                        <Select value={field.value ? String(field.value) : ""} onValueChange={(v) => field.onChange(Number(v))}>
+                        <Select value={field.value ? String(field.value) : ""} onValueChange={(v) => { field.onChange(Number(v)); void trigger("year") }}>
                           <SelectTrigger className="h-9 w-full text-xs" aria-invalid={!!errors.year}>
                             <SelectValue placeholder="Year" />
                           </SelectTrigger>
@@ -344,7 +358,7 @@ export default function SignupPage() {
                       control={control}
                       name="semester"
                       render={({ field }) => (
-                        <Select value={field.value ? String(field.value) : ""} onValueChange={(v) => field.onChange(Number(v))}>
+                        <Select value={field.value ? String(field.value) : ""} onValueChange={(v) => { field.onChange(Number(v)); void trigger("semester") }}>
                           <SelectTrigger className="h-9 w-full text-xs" aria-invalid={!!errors.semester}>
                             <SelectValue placeholder="Sem" />
                           </SelectTrigger>

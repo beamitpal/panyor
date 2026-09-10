@@ -5,6 +5,7 @@ import { auth } from "@/auth"
 import { getDb } from "@/db/server"
 import { users, userRoles } from "@/db/schema"
 import { requirePermission } from "@/lib/auth/server"
+import { normalizeEmail, normalizePhone } from "@/lib/auth/normalize"
 
 const roles = ["WARDEN","DEPUTY_WARDEN","PRESIDENT","CARETAKER","MESS_COMMITTEE","SPORTS_COMMITTEE","MESS_EMPLOYEE"] as const
 const schema = z.object({ name: z.string().min(2), email: z.string().email(), password: z.string().min(8), role: z.enum(roles), phone: z.string().optional() })
@@ -44,7 +45,11 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const actor = await requirePermission("users.manage")
-    const body = schema.parse(await request.json())
+    const raw = schema.parse(await request.json())
+    const email = normalizeEmail(raw.email)
+    const phone = raw.phone ? normalizePhone(raw.phone) : ""
+    if (raw.phone && !phone) return NextResponse.json({ error: "Enter a valid phone number." }, { status: 400 })
+    const body = { ...raw, email, phone }
     const db = getDb()
     const duplicate = await db.select({ id: users.id }).from(users).where(eq(users.email, body.email)).limit(1)
     if (duplicate[0]) return NextResponse.json({ error: "An account with this email already exists." }, { status: 409 })
