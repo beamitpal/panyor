@@ -3,6 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
+import { useState } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -56,6 +57,27 @@ function LoginForm() {
       setError("root", { message: error.message || "Sign-in failed. Check your credentials." })
       return
     }
+    // Check account status after sign-in and redirect accordingly.
+    try {
+      const session = await authClient.getSession()
+      if (session.data?.user) {
+        const user = session.data.user as Record<string, unknown>
+        const status = user.status as string
+        if (status === "PENDING") {
+          router.push("/pending")
+          router.refresh()
+          return
+        }
+        if (status === "REJECTED" || status === "SUSPENDED") {
+          router.push(`/login?status=${status}`)
+          router.refresh()
+          return
+        }
+      }
+    } catch {
+      // If status check fails, proceed to intended destination
+    }
+    // Proceed to the intended destination for approved accounts
     router.push(next)
     router.refresh()
   }
