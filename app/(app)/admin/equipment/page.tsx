@@ -71,6 +71,8 @@ async function readError(res: Response, fallback: string): Promise<string> {
 
 export default function EquipmentPage() {
   const { currentUser, can } = useRole()
+  const effectiveRoles = currentUser.roles?.length ? currentUser.roles : [currentUser.role]
+  const isPureStudent = effectiveRoles.length === 1 && effectiveRoles[0] === "STUDENT"
 
   const [search, setSearch] = React.useState("")
   const [categoryFilter, setCategoryFilter] = React.useState<string>("ALL")
@@ -343,7 +345,7 @@ export default function EquipmentPage() {
             </Button>
           )}
 
-          {currentUser.role === "STUDENT" ? (
+          {isPureStudent ? (
             <Button
               size="sm"
               onClick={() => setStudentReqModalOpen(true)}

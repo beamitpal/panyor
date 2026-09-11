@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { getDb } from "@/db/server"
 import { rooms, studentProfiles, users } from "@/db/schema"
-import { requirePermission, AuthError } from "@/lib/auth/server"
+import { getEffectiveRoles, requirePermission, AuthError } from "@/lib/auth/server"
 import { eq } from "drizzle-orm"
 import { randomUUID } from "crypto"
 
@@ -31,8 +31,10 @@ function authStatus(error: unknown): number {
  */
 export async function GET() {
   try {
-    await requirePermission("rooms.view")
+    const identity = await requirePermission("rooms.view")
     const db = getDb()
+    const roles = await getEffectiveRoles(identity)
+    const residentOnly = roles.length === 1 && roles[0] === "STUDENT"
 
     const allRooms = await db.select().from(rooms)
     const profiles = await db
@@ -78,6 +80,12 @@ export async function GET() {
       }
     })
 
+    if (residentOnly) {
+      const profile = await db.select({ roomId: studentProfiles.roomId })
+        .from(studentProfiles).where(eq(studentProfiles.userId, identity.id)).limit(1)
+      const roomId = profile[0]?.roomId
+      return NextResponse.json({ rooms: roomId ? data.filter((r) => r.id === roomId) : [] })
+    }
     return NextResponse.json({ rooms: data })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to load rooms."

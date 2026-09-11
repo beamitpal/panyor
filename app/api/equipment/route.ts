@@ -8,7 +8,7 @@ import {
   studentProfiles,
   users,
 } from "@/db/schema"
-import { AuthError, requirePermission } from "@/lib/auth/server"
+import { AuthError, getEffectiveRoles, requirePermission } from "@/lib/auth/server"
 import { eq, desc } from "drizzle-orm"
 
 const iso = (d: Date | string | null | undefined) =>
@@ -28,8 +28,10 @@ function toStatus(error: unknown): number {
  */
 export async function GET() {
   try {
-    await requirePermission("equipment.view")
+    const identity = await requirePermission("equipment.view")
     const db = getDb()
+    const roles = await getEffectiveRoles(identity)
+    const isResidentOnly = roles.includes("STUDENT") && !roles.some((r) => ["CARETAKER", "MESS_COMMITTEE", "SPORTS_COMMITTEE", "PRESIDENT", "DEPUTY_WARDEN", "WARDEN", "SUPER_ADMIN"].includes(r))
 
     const [eqRows, catRows, reqRows, txnRows] = await Promise.all([
       db
@@ -65,6 +67,16 @@ export async function GET() {
         .orderBy(desc(equipmentTransactions.createdAt)),
     ])
 
+    let safeRequests = reqRows
+    let safeTransactions = txnRows
+    if (isResidentOnly) {
+      const profile = await db.select({ id: studentProfiles.id })
+        .from(studentProfiles).where(eq(studentProfiles.userId, identity.id)).limit(1)
+      const profileId = profile[0]?.id
+      safeRequests = profileId ? reqRows.filter((r) => r.request.studentProfileId === profileId) : []
+      safeTransactions = profileId ? txnRows.filter((r) => r.txn.studentProfileId === profileId) : []
+    }
+
     return NextResponse.json({
       equipment: eqRows.map(({ item, categoryName }) => ({
         ...item,
@@ -77,7 +89,7 @@ export async function GET() {
         ...c,
         createdAt: iso(c.createdAt),
       })),
-      requests: reqRows.map(({ request, studentName, studentId, equipmentName, equipmentCode }) => ({
+      requests: safeRequests.map(({ request, studentName, studentId, equipmentName, equipmentCode }) => ({
         ...request,
         studentName: studentName ?? "Unknown",
         studentId: studentId ?? "",
@@ -89,7 +101,7 @@ export async function GET() {
         updatedAt: iso(request.updatedAt),
         requestedAt: iso(request.createdAt),
       })),
-      transactions: txnRows.map(({ txn, studentName, studentId, equipmentName }) => ({
+      transactions: safeTransactions.map(({ txn, studentName, studentId, equipmentName }) => ({
         ...txn,
         studentName: studentName ?? "Unknown",
         studentId: studentId ?? "",

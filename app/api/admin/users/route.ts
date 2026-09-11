@@ -56,7 +56,8 @@ export async function POST(request: Request) {
     const created = await auth.api.signUpEmail({ body: { name: body.name, email: body.email, password: body.password } })
     if (!created?.user?.id) return NextResponse.json({ error: "Unable to create administrator account." }, { status: 400 })
     await db.update(users).set({ role: body.role, status: "APPROVED", phone: body.phone || null, updatedAt: new Date() }).where(eq(users.id, created.user.id))
-    await db.insert(userRoles).values({ id: crypto.randomUUID(), userId: created.user.id, role: body.role, assignedBy: actor.id })
+    // The selected administrator role is the primary role in `users.role`.
+    // Additional assignments only belong in `user_roles`.
     return NextResponse.json({ success: true, userId: created.user.id })
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: "Invalid administrator data.", details: error.flatten() }, { status: 400 })

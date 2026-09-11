@@ -142,6 +142,20 @@ function rolesHave(roles: RoleName[], permission: PermissionKey): boolean {
   return roles.some((role) => hasPermission(role, permission))
 }
 
+/** Require that the authenticated account has an effective role.
+ * This is useful for resident self-service endpoints: committee members
+ * retain STUDENT alongside their committee role, while non-resident staff
+ * cannot impersonate student self-service operations.
+ */
+export async function requireEffectiveRole(role: RoleName): Promise<AuthenticatedIdentity> {
+  const identity = await requireApprovedAuth()
+  const roles = await getEffectiveRoles(identity)
+  if (!roles.includes(role)) {
+    throw new AuthError(`Role "${role}" required.`, 403)
+  }
+  return identity
+}
+
 /** Require a single permission (server-side security boundary). */
 export async function requirePermission(permission: PermissionKey): Promise<AuthenticatedIdentity> {
   const identity = await requireApprovedAuth()

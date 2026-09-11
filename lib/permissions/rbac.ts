@@ -32,6 +32,7 @@ export type PermissionKey =
   | "equipment.return"
   | "equipment.export"
   | "equipment_requests.view"
+  | "equipment_requests.create"
   | "equipment_requests.approve"
   | "equipment_requests.reject"
   | "complaints.view"
@@ -40,6 +41,7 @@ export type PermissionKey =
   | "complaints.assign"
   | "complaints.resolve"
   | "complaints.delete"
+  | "complaints.close_own"
   | "complaints.export"
   | "mess.view"
   | "mess.manage"
@@ -80,8 +82,10 @@ export const ROLE_DEFINITIONS: Record<RoleName, RoleDefinition> = {
       "rooms.view",
       "equipment.view",
       "equipment_requests.view",
+      "equipment_requests.create",
       "complaints.view",
       "complaints.create",
+      "complaints.close_own",
       "mess.view",
       "notices.view",
       "reports.view",

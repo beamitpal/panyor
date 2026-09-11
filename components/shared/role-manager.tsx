@@ -15,15 +15,12 @@ import {
 import { toast } from "sonner"
 import { useApi } from "@/hooks/use-api"
 
-const ASSIGNABLE_ROLES = [
+const STUDENT_ASSIGNABLE_ROLES = [
   "PRESIDENT",
   "MESS_COMMITTEE",
   "SPORTS_COMMITTEE",
-  "CARETAKER",
-  "MESS_EMPLOYEE",
-  "DEPUTY_WARDEN",
-  "WARDEN",
 ] as const
+
 
 /**
  * Additional-role manager for the multi-role model: one person, one
@@ -89,7 +86,8 @@ export function RoleManager({
     }
   }
 
-  const available = ASSIGNABLE_ROLES.filter((r) => !roles.includes(r))
+  const assignableRoles = STUDENT_ASSIGNABLE_ROLES
+  const available = assignableRoles.filter((r) => !roles.includes(r))
 
   return (
     <div className="flex flex-col gap-2">

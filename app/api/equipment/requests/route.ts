@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { getDb } from "@/db/server"
 import { equipment, equipmentRequests, studentProfiles } from "@/db/schema"
-import { AuthError, requireAuth } from "@/lib/auth/server"
+import { AuthError, requirePermission } from "@/lib/auth/server"
 import { eq } from "drizzle-orm"
 
 function toStatus(error: unknown): number {
@@ -12,10 +12,10 @@ function toStatus(error: unknown): number {
   return 500
 }
 
-/** POST /api/equipment/requests — student submits a request (any signed-in user). */
+/** POST /api/equipment/requests — student submits a request for their own approved profile. */
 export async function POST(req: Request) {
   try {
-    await requireAuth()
+    const identity = await requirePermission("equipment_requests.create")
     const body = await req.json()
     const { studentProfileId, equipmentId, quantity, purpose, expectedReturnDate } = body ?? {}
     if (!studentProfileId || !equipmentId) {
@@ -33,6 +33,9 @@ export async function POST(req: Request) {
       .where(eq(studentProfiles.id, String(studentProfileId)))
       .limit(1)
     if (!sRows[0]) return NextResponse.json({ error: "Student profile not found." }, { status: 404 })
+    if (sRows[0].userId !== identity.id) {
+      return NextResponse.json({ error: "You may only request equipment for your own student profile." }, { status: 403 })
+    }
     if (sRows[0].approvalStatus !== "APPROVED") {
       return NextResponse.json({ error: "Only approved hostel students can request equipment." }, { status: 403 })
     }

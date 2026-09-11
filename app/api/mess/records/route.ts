@@ -9,7 +9,7 @@ import {
   studentProfiles,
   users,
 } from "@/db/schema"
-import { AuthError, requirePermission } from "@/lib/auth/server"
+import { AuthError, getEffectiveRoles, requirePermission } from "@/lib/auth/server"
 import { and, desc, eq } from "drizzle-orm"
 import { randomUUID } from "crypto"
 
@@ -19,8 +19,10 @@ function iso(d: Date | null | undefined) {
 
 export async function GET(req: Request) {
   try {
-    await requirePermission("mess.view")
+    const identity = await requirePermission("mess.view")
     const db = getDb()
+    const roles = await getEffectiveRoles(identity)
+    const residentOnly = roles.length === 1 && roles[0] === "STUDENT"
     const { searchParams } = new URL(req.url)
     const date = searchParams.get("date") ?? undefined
     const mealType = searchParams.get("mealType") ?? undefined
@@ -71,6 +73,12 @@ export async function GET(req: Request) {
     })
     if (date) records = records.filter((r) => r.distributionDate === date)
     if (mealType && mealType !== "ALL") records = records.filter((r) => r.mealType === mealType)
+    if (residentOnly) {
+      const mine = await db.select({ id: studentProfiles.id })
+        .from(studentProfiles).where(eq(studentProfiles.userId, identity.id)).limit(1)
+      const profileId = mine[0]?.id
+      records = profileId ? records.filter((r) => r.studentProfileId === profileId) : []
+    }
     return NextResponse.json({ records })
   } catch (error) {
     const status = error instanceof AuthError ? error.status : 500

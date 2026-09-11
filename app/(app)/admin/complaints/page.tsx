@@ -60,6 +60,10 @@ import { useApi } from "@/hooks/use-api"
 
 export default function ComplaintsPage() {
   const { currentUser, can } = useRole()
+  const effectiveRoles = currentUser.roles?.length ? currentUser.roles : [currentUser.role]
+  const isResident = effectiveRoles.includes("STUDENT")
+  const isPureStudent = effectiveRoles.length === 1 && effectiveRoles[0] === "STUDENT"
+  const hasStaffComplaintPower = can("complaints.edit") || can("complaints.assign") || can("complaints.resolve")
 
   const { data, loading, error: loadError, reload } = useApi<{
     complaints: ComplaintWithDetails[]
@@ -125,7 +129,7 @@ export default function ComplaintsPage() {
     let list = [...complaints]
 
     // If active user is student, only show their complaints
-    if (currentUser.role === "STUDENT" && currentUser.studentProfile) {
+    if (isPureStudent && currentUser.studentProfile) {
       list = list.filter((c) => c.studentProfileId === currentUser.studentProfile?.id)
     }
 
@@ -159,11 +163,11 @@ export default function ComplaintsPage() {
   const complaintComments = React.useMemo(() => {
     if (!selectedComplaint) return []
     let list = commentsById[selectedComplaint.id] ?? []
-    if (currentUser.role === "STUDENT") {
+    if (isPureStudent) {
       list = list.filter((c) => !c.isInternal)
     }
     return [...list].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-  }, [selectedComplaint, currentUser.role, commentsById])
+  }, [selectedComplaint, isPureStudent, commentsById])
 
   const handleOpenDrawer = (cmp: ComplaintWithDetails) => {
     setSelectedComplaint(cmp)
@@ -239,7 +243,7 @@ export default function ComplaintsPage() {
   const handleCreateComplaintSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const studentProfileId =
-      currentUser.role === "STUDENT" && currentUser.studentProfile
+      isPureStudent && currentUser.studentProfile
         ? currentUser.studentProfile.id
         : formStudentId
 
@@ -307,7 +311,7 @@ export default function ComplaintsPage() {
           <Button
             size="sm"
             onClick={() => {
-              if (currentUser.role === "STUDENT" && currentUser.studentProfile) {
+              if (isPureStudent && currentUser.studentProfile) {
                 setFormStudentId(currentUser.studentProfile.id)
               }
               setNewComplaintModalOpen(true)
@@ -658,7 +662,7 @@ export default function ComplaintsPage() {
               )}
 
               {/* Student Resolution Feedback Box */}
-              {selectedComplaint.status === "RESOLVED" && currentUser.role === "STUDENT" && (
+              {selectedComplaint.status === "RESOLVED" && isPureStudent && (
                 <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 space-y-3 text-xs">
                   <h4 className="font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
                     <Star className="size-4 fill-amber-400 text-amber-400" /> Confirm Resolution & Rate Service
@@ -716,7 +720,7 @@ export default function ComplaintsPage() {
                   <h4 className="font-bold text-foreground text-xs flex items-center gap-1.5">
                     <MessageSquare className="size-4 text-primary" /> Timeline Discussion ({complaintComments.length})
                   </h4>
-                  {currentUser.role !== "STUDENT" && (
+                  {(!isResident || hasStaffComplaintPower) && (
                     <span className="text-[10px] text-muted-foreground flex items-center gap-1">
                       <Lock className="size-3" /> Internal staff notes supported
                     </span>
@@ -759,7 +763,7 @@ export default function ComplaintsPage() {
                     </Button>
                   </div>
 
-                  {currentUser.role !== "STUDENT" && (
+                  {(!isResident || hasStaffComplaintPower) && (
                     <label className="flex items-center gap-2 text-[11px] text-muted-foreground cursor-pointer">
                       <input
                         type="checkbox"
@@ -795,7 +799,7 @@ export default function ComplaintsPage() {
 
           <form onSubmit={handleCreateComplaintSubmit}>
             <FieldGroup className="space-y-4 py-2 text-xs">
-            {currentUser.role !== "STUDENT" && (
+            {(!isResident || hasStaffComplaintPower) && (
               <Field>
                 <FieldLabel>
                   Select Resident Student (On behalf of)<span className="text-destructive"> *</span>

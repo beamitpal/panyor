@@ -8,7 +8,7 @@ import {
   studentProfiles,
   users,
 } from "@/db/schema"
-import { AuthError, requirePermission } from "@/lib/auth/server"
+import { AuthError, getEffectiveRoles, requirePermission } from "@/lib/auth/server"
 import { desc, eq, sql } from "drizzle-orm"
 import { randomUUID } from "crypto"
 
@@ -16,8 +16,10 @@ const VALID_MEALS = ["BREAKFAST", "LUNCH", "SNACKS", "DINNER"] as const
 
 export async function GET(req: Request) {
   try {
-    await requirePermission("mess.view")
+    const identity = await requirePermission("mess.view")
     const db = getDb()
+    const roles = await getEffectiveRoles(identity)
+    const residentOnly = roles.length === 1 && roles[0] === "STUDENT"
     const { searchParams } = new URL(req.url)
     const date = searchParams.get("date") ?? undefined
     const mealType = searchParams.get("mealType") ?? undefined
@@ -89,6 +91,14 @@ export async function GET(req: Request) {
       approvalStatus: p.profile.approvalStatus,
     }))
 
+    if (residentOnly) {
+      const mine = profileRows.find((p) => p.profile.userId === identity.id)
+      return NextResponse.json({
+        distributions,
+        rooms: mine ? roomsOut.filter((r) => r.id === mine.profile.roomId) : [],
+        students: mine ? students.filter((st) => st.id === mine.profile.id) : [],
+      })
+    }
     return NextResponse.json({ distributions, rooms: roomsOut, students })
   } catch (error) {
     const status = error instanceof AuthError ? error.status : 500

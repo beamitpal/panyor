@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { getDb } from "@/db/server"
-import { complaintComments, users } from "@/db/schema"
-import { AuthError, requireAnyPermission, requirePermission } from "@/lib/auth/server"
+import { complaintComments, complaints, studentProfiles, users } from "@/db/schema"
+import { AuthError, getEffectiveRoles, requireAnyPermission, requirePermission } from "@/lib/auth/server"
 import { asc, eq } from "drizzle-orm"
 
 function errStatus(error: unknown): number {
@@ -14,9 +14,12 @@ function errStatus(error: unknown): number {
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requirePermission("complaints.view")
+    const identity = await requirePermission("complaints.view")
     const { id } = await params
     const db = getDb()
+    const roles = await getEffectiveRoles(identity)
+    const residentOnly = roles.length === 1 && roles[0] === "STUDENT"
+    const canViewInternal = roles.some((role) => ["CARETAKER", "MESS_COMMITTEE", "DEPUTY_WARDEN", "WARDEN", "SUPER_ADMIN"].includes(role))
     const rows = await db
       .select({ comment: complaintComments, user: users })
       .from(complaintComments)
@@ -24,8 +27,18 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       .where(eq(complaintComments.complaintId, id))
       .orderBy(asc(complaintComments.createdAt))
 
+    let visibleRows = canViewInternal ? rows : rows.filter(({ comment }) => !comment.isInternal)
+    if (residentOnly) {
+      const [complaint] = await db.select({ studentProfileId: complaints.studentProfileId })
+        .from(complaints).where(eq(complaints.id, id)).limit(1)
+      if (!complaint) return NextResponse.json({ error: "Complaint not found." }, { status: 404 })
+      const [profile] = await db.select({ userId: studentProfiles.userId })
+        .from(studentProfiles).where(eq(studentProfiles.id, complaint.studentProfileId)).limit(1)
+      if (!profile || profile.userId !== identity.id) return NextResponse.json({ error: "Forbidden." }, { status: 403 })
+      visibleRows = visibleRows.filter(({ comment }) => !comment.isInternal)
+    }
     return NextResponse.json({
-      comments: rows.map(({ comment: c, user }) => ({
+      comments: visibleRows.map(({ comment: c, user }) => ({
         id: c.id,
         complaintId: c.complaintId,
         userId: c.userId,
@@ -50,6 +63,28 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const { id } = await params
     const db = getDb()
     const body = await req.json()
+
+    let operationalStaff = false
+    try {
+      await requireAnyPermission(["complaints.edit", "complaints.assign", "complaints.resolve"])
+      operationalStaff = true
+    } catch {
+      operationalStaff = false
+    }
+    if (!operationalStaff) {
+      const [complaint] = await db.select({ studentProfileId: complaints.studentProfileId })
+        .from(complaints).where(eq(complaints.id, id)).limit(1)
+      if (!complaint) return NextResponse.json({ error: "Complaint not found." }, { status: 404 })
+      const [profile] = await db.select({ userId: studentProfiles.userId })
+        .from(studentProfiles).where(eq(studentProfiles.id, complaint.studentProfileId)).limit(1)
+      if (!profile || profile.userId !== identity.id) {
+        return NextResponse.json({ error: "You may only comment on your own complaint." }, { status: 403 })
+      }
+      if (body.isInternal === true) {
+        return NextResponse.json({ error: "Residents cannot create internal staff notes." }, { status: 403 })
+      }
+    }
+
     if (!body.message?.trim()) {
       return NextResponse.json({ error: "Message is required." }, { status: 400 })
     }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { getDb } from "@/db/server"
-import { complaints } from "@/db/schema"
-import { AuthError, requireAnyPermission } from "@/lib/auth/server"
+import { complaints, studentProfiles } from "@/db/schema"
+import { AuthError, requireAnyPermission, requirePermission } from "@/lib/auth/server"
 import { eq } from "drizzle-orm"
 
 function errStatus(error: unknown): number {
@@ -16,10 +16,28 @@ const STATUSES = ["OPEN", "ACKNOWLEDGED", "IN_PROGRESS", "RESOLVED", "CLOSED", "
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireAnyPermission(["complaints.edit", "complaints.assign", "complaints.resolve"])
     const { id } = await params
     const db = getDb()
     const body = await req.json()
+
+    let mutationMode: "staff" | "own_feedback" = "staff"
+    try {
+      await requireAnyPermission(["complaints.edit", "complaints.assign", "complaints.resolve"])
+    } catch {
+      const identity = await requirePermission("complaints.close_own")
+      mutationMode = "own_feedback"
+      const [complaint] = await db.select({ studentProfileId: complaints.studentProfileId, status: complaints.status })
+        .from(complaints).where(eq(complaints.id, id)).limit(1)
+      if (!complaint) return NextResponse.json({ error: "Complaint not found." }, { status: 404 })
+      const [profile] = await db.select({ userId: studentProfiles.userId })
+        .from(studentProfiles).where(eq(studentProfiles.id, complaint.studentProfileId)).limit(1)
+      if (!profile || profile.userId !== identity.id) {
+        return NextResponse.json({ error: "You may only close and rate your own complaint." }, { status: 403 })
+      }
+      if (complaint.status !== "RESOLVED" || body.status !== "CLOSED" || body.rating === undefined) {
+        return NextResponse.json({ error: "Residents may only close their own resolved complaint with a rating." }, { status: 403 })
+      }
+    }
     const patch: Partial<typeof complaints.$inferInsert> = { updatedAt: new Date() }
 
     if (body.status !== undefined) {
@@ -51,6 +69,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
     if (body.resolutionNotes !== undefined && patch.resolutionNotes === undefined) {
       patch.resolutionNotes = body.resolutionNotes
+    }
+
+    if (mutationMode === "own_feedback") {
+      if (body.assignedTo !== undefined || body.resolutionNotes !== undefined) {
+        return NextResponse.json({ error: "Residents cannot change assignment or resolution details." }, { status: 403 })
+      }
+      patch.status = "CLOSED"
+      patch.closedAt = new Date()
     }
 
     await db.update(complaints).set(patch).where(eq(complaints.id, id))
