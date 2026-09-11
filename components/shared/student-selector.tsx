@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Search, Check } from "lucide-react"
+import { Search, Check, Loader2, AlertTriangle, RefreshCw } from "lucide-react"
 import type { StudentProfileWithDetails } from "@/types"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
@@ -10,9 +10,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import { InputGroup, InputGroupAddon } from "@/components/ui/input-group"
 import { Empty } from "@/components/ui/empty"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export interface StudentSelectorProps {
-  value?: string // studentProfileId
+  value?: string
   onChange: (student: StudentProfileWithDetails) => void
   placeholder?: string
   filterApprovedOnly?: boolean
@@ -31,15 +32,24 @@ export function StudentSelector({
   const [open, setOpen] = React.useState(false)
   const [search, setSearch] = React.useState("")
   const [allStudents, setAllStudents] = React.useState<StudentProfileWithDetails[]>([])
+  const [loading, setLoading] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
 
-  // Live directory from PostgreSQL — the old in-memory mock store is gone.
   const fetchStudents = React.useCallback(async () => {
+    setLoading(true)
+    setError(null)
     try {
       const response = await fetch("/api/students", { cache: "no-store" })
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}))
+        throw new Error(errData.error || `Failed to load students: ${response.status}`)
+      }
       const result = await response.json()
-      if (response.ok) setAllStudents((result.students ?? []) as StudentProfileWithDetails[])
-    } catch {
-      // Keep previous results on transient failures.
+      setAllStudents((result.students ?? []) as StudentProfileWithDetails[])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load students")
+    } finally {
+      setLoading(false)
     }
   }, [])
 
@@ -112,9 +122,32 @@ export function StudentSelector({
           />
         </InputGroup>
 
+        {error && (
+          <Alert variant="destructive" className="mb-2 text-xs">
+            <AlertDescription className="flex items-center gap-2">
+              <AlertTriangle className="size-3 shrink-0" />
+              <span>{error}</span>
+              <Button variant="ghost" size="icon" className="ml-auto h-6 w-6" onClick={fetchStudents}>
+                <RefreshCw className="size-3" />
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
         <div className="max-h-[260px] overflow-y-auto space-y-1 pr-1">
-          {students.length === 0 ? (
-            <Empty title="No matching students" description="Try a different name, ID, or room number." />
+          {loading ? (
+            <div className="flex items-center justify-center py-4">
+              <Loader2 className="size-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : students.length === 0 ? (
+            <Empty
+              title={allStudents.length === 0 ? "No students found" : "No matching students"}
+              description={
+                allStudents.length === 0
+                  ? "No approved students in the system. Please approve students first."
+                  : "Try a different name, ID, or room number."
+              }
+            />
           ) : (
             students.map((student) => {
               const isSelected = student.id === value
