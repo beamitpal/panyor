@@ -97,7 +97,7 @@ export function StudentSelector({
           </Button>
         }
       />
-      <PopoverContent className="w-[360px] max-w-[calc(100vw-2rem)] p-2 bg-popover text-popover-foreground shadow-xl border rounded-xl" align="start">
+      <PopoverContent className="w-[360px] max-w-[calc(100vw-2rem)] p-2 bg-popover text-popover-foreground shadow-xl border rounded-xl" style={{ zIndex: 1000 }} align="start">
         <InputGroup className="border-0 border-b border-border rounded-none shadow-none focus-within:ring-0 focus-within:border-border px-2.5 pb-2 mb-1.5">
           <InputGroupAddon align="left">
             <Search className="size-3.5 shrink-0 opacity-50" />
