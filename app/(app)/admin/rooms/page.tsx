@@ -58,6 +58,7 @@ export default function RoomsPage() {
   const [selectedRoom, setSelectedRoom] = React.useState<RoomWithOccupants | null>(null)
   const [selectedStudentId, setSelectedStudentId] = React.useState<string>("")
   const [selectedBed, setSelectedBed] = React.useState<number>(1)
+  const [isAssigning, setIsAssigning] = React.useState(false)
 
   const [addRoomModalOpen, setAddRoomModalOpen] = React.useState(false)
   const [newRoomNumber, setNewRoomNumber] = React.useState("")
@@ -113,26 +114,32 @@ export default function RoomsPage() {
       toast.error("Please select an approved student.")
       return
     }
-
-    const res = await fetch(`/api/rooms/${selectedRoom.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "assign",
-        studentProfileId: selectedStudentId,
-        bedNumber: selectedBed,
-      }),
-    })
-    const data = await res.json().catch(() => ({}))
-
-    if (res.ok) {
-      toast.success(`Bed ${selectedBed} in Room ${selectedRoom.roomNumber} assigned successfully.`)
-      setAssignModalOpen(false)
-      setSelectedRoom(null)
-      setSelectedStudentId("")
-      fetchRooms()
-    } else {
-      toast.error(data.error || "Failed to assign student.")
+    setIsAssigning(true)
+    try {
+      const res = await fetch(`/api/rooms/${selectedRoom.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "assign",
+          studentProfileId: selectedStudentId,
+          bedNumber: selectedBed,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        toast.success(`Bed ${selectedBed} in Room ${selectedRoom.roomNumber} assigned successfully.`)
+        setAssignModalOpen(false)
+        setSelectedRoom(null)
+        setSelectedStudentId("")
+        setIsAssigning(false)
+        fetchRooms()
+      } else {
+        toast.error(data.error || "Failed to assign student.")
+      }
+    } catch (err) {
+      toast.error("Error during assignment. Please try again.")
+    } finally {
+      setIsAssigning(false)
     }
   }
 
@@ -592,13 +599,13 @@ export default function RoomsPage() {
               />
             </Field>
 
-            <DialogFooter className="pt-2">
+<DialogFooter className="pt-2">
               <Button variant="outline" size="sm" type="button" onClick={() => setAssignModalOpen(false)}>
                 Cancel
               </Button>
-              <Button size="sm" type="submit" disabled={!selectedStudentId}>
-                Confirm Allocation
-              </Button>
+<Button size="sm" type="submit" disabled={!selectedStudentId || isAssigning}>
+                  Confirm Allocation
+                </Button>
             </DialogFooter>
             </FieldGroup>
           </form>
